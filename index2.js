@@ -21,7 +21,6 @@ async function login() {
     const info = await ig.account.currentUser();
     console.log(`Logged in as ${info.username} using saved session.`);
   } catch (e) {
-    // 2. If no session or session expired, do a fresh login
     console.log("No valid session found. Performing fresh login...");
 
     // 2026 REQUIREMENT: Mimic app startup behavior
