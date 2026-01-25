@@ -85,6 +85,7 @@ async function leaveACommnet() {
   try {
     const now = new Date();
     const nextHour = (now.getHours() + 1) % 24;
+    const oneHourAgo = Math.floor(Date.now() / 1000) - 3600;
     const randomMin = Math.floor(Math.random() * 60);
     const cronExpression = `${randomMin} ${nextHour} * * *`;
     const exploreFeed = ig.feed.topicalExplore();
@@ -100,7 +101,10 @@ async function leaveACommnet() {
         ...(content.two_by_two_item
           ? [content.two_by_two_item.channel?.media]
           : []),
-      ].filter(Boolean); // Remove nulls
+      ].filter(
+        (post) =>
+          post && (post.taken_at || post.device_timestamp / 1000) >= oneHourAgo,
+      );
     });
 
     if (allItems.length > 0) {
@@ -143,14 +147,18 @@ function scheduleNextComment() {
   const randomMin = Math.floor(Math.random() * 60);
   const cronExpression = `${randomMin} ${nextHour} * * *`;
 
-  console.log(`Next COMMENT scheduled for: ${nextHour}:${randomMin.toString().padStart(2, "0")}`);
+  console.log(
+    `Next COMMENT scheduled for: ${nextHour}:${randomMin.toString().padStart(2, "0")}`,
+  );
 
   const task = cron.schedule(cronExpression, async () => {
-    console.log(`>>> Executing scheduled comment at ${new Date().toLocaleTimeString()}`);
-    
+    console.log(
+      `>>> Executing scheduled comment at ${new Date().toLocaleTimeString()}`,
+    );
+
     await leaveACommnet(); // Run the action
-    
-    task.stop();           // Stop the current cron task
+
+    task.stop(); // Stop the current cron task
     scheduleNextComment(); // Schedule the NEW random time for the next window
   });
 }
