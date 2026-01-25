@@ -2,8 +2,8 @@ import "dotenv/config";
 import { IgApiClient } from "instagram-private-api";
 import { readFile, writeFile, access } from "fs/promises";
 import cron from "node-cron";
-
 const ig = new IgApiClient();
+
 const SESSION_FILE = "./session.json";
 
 // --- SESSION MANAGEMENT ---
@@ -77,6 +77,81 @@ function scheduleNextVideo() {
     await postVideo();
     task.stop();
     scheduleNextVideo();
+    await leaveACommnet();
+  });
+}
+
+async function leaveACommnet() {
+  try {
+    const now = new Date();
+    const nextHour = (now.getHours() + 1) % 24;
+    const randomMin = Math.floor(Math.random() * 60);
+    const cronExpression = `${randomMin} ${nextHour} * * *`;
+    const exploreFeed = ig.feed.topicalExplore();
+    const response = await exploreFeed.request(); // Use .request() for raw data access
+
+    // 1. Flatten the nested structure of Topical Explore
+    // Topical Explore uses sections -> layout_content -> medias/fill_items
+    const allItems = response.sectional_items.flatMap((section) => {
+      const content = section.layout_content;
+      return [
+        ...(content.medias?.map((m) => m.media) || []),
+        ...(content.fill_items?.map((m) => m.media) || []),
+        ...(content.two_by_two_item
+          ? [content.two_by_two_item.channel?.media]
+          : []),
+      ].filter(Boolean); // Remove nulls
+    });
+
+    if (allItems.length > 0) {
+      const randomPost = allItems[Math.floor(Math.random() * allItems.length)];
+
+      // 2. Identify the ID (In 2026, check both 'pk' and 'id')
+      const mediaId = randomPost.pk || randomPost.id;
+
+      if (!mediaId) {
+        console.log("Found post, but it has no valid ID property.");
+        return;
+      }
+
+      await ig.media.comment({
+        mediaId: mediaId,
+        text: "Amazing shot! 🔥",
+      });
+
+      console.log(`Successfully commented on ID: ${mediaId}`);
+    } else {
+      console.log("No posts found in this Explore feed section.");
+    }
+
+    const task = cron.schedule(cronExpression, async () => {
+      console.log(
+        `>>> Triggering comment at ${new Date().toLocaleTimeString()}`,
+      );
+      task.stop();
+      await leaveACommnet();
+    });
+  } catch (error) {
+    console.error("Operation failed:", error.message);
+  }
+}
+
+function scheduleNextComment() {
+  const now = new Date();
+  // Schedule for some time in the next hour
+  const nextHour = (now.getHours() + 1) % 24;
+  const randomMin = Math.floor(Math.random() * 60);
+  const cronExpression = `${randomMin} ${nextHour} * * *`;
+
+  console.log(`Next COMMENT scheduled for: ${nextHour}:${randomMin.toString().padStart(2, "0")}`);
+
+  const task = cron.schedule(cronExpression, async () => {
+    console.log(`>>> Executing scheduled comment at ${new Date().toLocaleTimeString()}`);
+    
+    await leaveACommnet(); // Run the action
+    
+    task.stop();           // Stop the current cron task
+    scheduleNextComment(); // Schedule the NEW random time for the next window
   });
 }
 
@@ -85,6 +160,7 @@ async function start() {
   console.log("Initializing bot...");
   await login(); // Login ONCE at startup
   scheduleNextVideo();
+  scheduleNextComment();
 }
 
 start();
