@@ -83,62 +83,54 @@ function scheduleNextVideo() {
 
 async function leaveACommnet() {
   try {
-    const now = new Date();
-    const nextHour = (now.getHours() + 1) % 24;
-    const oneHourAgo = Math.floor(Date.now() / 1000) - 3600;
-    const randomMin = Math.floor(Math.random() * 60);
-    const cronExpression = `${randomMin} ${nextHour} * * *`;
+    const oneDayAgo = Math.floor(Date.now() / 1000) - 86400;
     const exploreFeed = ig.feed.topicalExplore();
-    const response = await exploreFeed.request(); // Use .request() for raw data access
+    const response = await exploreFeed.request();
 
-    // 1. Flatten the nested structure of Topical Explore
-    // Topical Explore uses sections -> layout_content -> medias/fill_items
+    // 1. Improved Flattening (Handles 2026 layout structures)
     const allItems = response.sectional_items.flatMap((section) => {
       const content = section.layout_content;
+      if (!content) return [];
+      
       return [
         ...(content.medias?.map((m) => m.media) || []),
         ...(content.fill_items?.map((m) => m.media) || []),
-        ...(content.two_by_two_item
-          ? [content.two_by_two_item.channel?.media]
-          : []),
-      ].filter(
-        (post) =>
-          post && (post.taken_at || post.device_timestamp / 1000) >= oneHourAgo,
-      );
-    });
+        // 2026 fix: Check for channel/igtv objects inside two_by_two_item
+        ...(content.two_by_two_item?.channel?.media ? [content.two_by_two_item.channel.media] : []),
+        ...(content.two_by_two_item?.igtv?.media ? [content.two_by_two_item.igtv.media] : [])
+      ];
+    }).filter(post => 
+      post && (post.taken_at || post.device_timestamp / 1000) >= oneDayAgo
+    );
 
     if (allItems.length > 0) {
       const randomPost = allItems[Math.floor(Math.random() * allItems.length)];
-
-      // 2. Identify the ID (In 2026, check both 'pk' and 'id')
       const mediaId = randomPost.pk || randomPost.id;
 
-      if (!mediaId) {
-        console.log("Found post, but it has no valid ID property.");
-        return;
-      }
+      if (!mediaId) return;
 
       await ig.media.comment({
         mediaId: mediaId,
-        text: "Amazing shot! 🔥",
+        text: "blackspong_hourly",
       });
 
       console.log(`Successfully commented on ID: ${mediaId}`);
     } else {
-      console.log("No posts found in this Explore feed section.");
+      console.log("No posts found in the last 24h.");
     }
-
-    const task = cron.schedule(cronExpression, async () => {
-      console.log(
-        `>>> Triggering comment at ${new Date().toLocaleTimeString()}`,
-      );
-      task.stop();
-      await leaveACommnet();
-    });
   } catch (error) {
     console.error("Operation failed:", error.message);
   }
 }
+
+// 2. Global Scheduler (Run once per hour at a random minute)
+// This keeps your memory usage stable in 2026 environments.
+const randomMinute = Math.floor(Math.random() * 60);
+cron.schedule(`${randomMinute} * * * *`, async () => {
+  console.log(`>>> Triggering comment at ${new Date().toLocaleTimeString()}`);
+  await leaveACommnet();
+});
+
 
 function scheduleNextComment() {
   const now = new Date();
